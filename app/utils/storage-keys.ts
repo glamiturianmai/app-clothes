@@ -1,0 +1,7 @@
+const STORAGE_SCHEMA_VERSION = 1
+
+const WARDROBE_PERSIST_KEY = 'outfit-canvas-wardrobe'
+
+const OUTFITS_PERSIST_KEY = 'outfit-canvas-outfits'
+
+export { OUTFITS_PERSIST_KEY, STORAGE_SCHEMA_VERSION, WARDROBE_PERSIST_KEY }
