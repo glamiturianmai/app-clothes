@@ -58,12 +58,14 @@
 
       <aside class="page__sidebar">
         <WeatherWidget class="page__weather" @filter:temperature="onFilterByWeather" />
+        <AiChatWidget class="page__ai-chat" />
       </aside>
     </div>
   </main>
 </template>
 
 <script setup lang="ts">
+import AiChatWidget from '~/components/shared/AiChatWidget.client.vue'
 import WeatherWidget from '~/components/shared/WeatherWidget.client.vue'
 
 const outfitsStore = useOutfitsStore()
@@ -142,6 +144,9 @@ function signedRounded(value: number) {
 .page__sidebar {
   position: sticky;
   top: 5.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
 .page__header {
@@ -157,7 +162,8 @@ function signedRounded(value: number) {
   color: #191919;
 }
 
-.page__weather {
+.page__weather,
+.page__ai-chat {
   width: 100%;
 }
 

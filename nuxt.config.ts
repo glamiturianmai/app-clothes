@@ -15,6 +15,7 @@ export default defineNuxtConfig({
     },
   },
   runtimeConfig: {
+    openrouterApiKey: process.env.OPENROUTER_API_KEY ?? '',
     public: {
       uploadcarePublicKey:
         process.env.NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY ??
