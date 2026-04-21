@@ -1,61 +1,41 @@
 <template>
   <div class="outfit-draft-toolbar">
-    <h3 class="outfit-draft-toolbar__title">Луки</h3>
-
-    <label class="outfit-draft-toolbar__field">
-      <span class="outfit-draft-toolbar__label">Название</span>
-      <input v-model="outfitName" class="outfit-draft-toolbar__input" type="text" autocomplete="off" />
-    </label>
-
-    <label class="outfit-draft-toolbar__field">
-      <span class="outfit-draft-toolbar__label">Теги</span>
-      <input
-        v-model="outfitTagsText"
-        class="outfit-draft-toolbar__input"
-        type="text"
-        placeholder="через запятую"
-        autocomplete="off"
-      />
-    </label>
-
-    <div class="outfit-draft-toolbar__row">
-      <button type="button" class="outfit-draft-toolbar__btn outfit-draft-toolbar__btn_primary" @click="saveOutfit">
-        Сохранить как новый
-      </button>
-
-      <button
-        type="button"
-        class="outfit-draft-toolbar__btn"
-        :disabled="!isUpdatePossible"
-        @click="updateSelectedOutfit"
-      >
-        Обновить выбранный
-      </button>
-    </div>
-
-    <div class="outfit-draft-toolbar__row outfit-draft-toolbar__row_load">
-      <label class="outfit-draft-toolbar__field outfit-draft-toolbar__field_grow">
-        <span class="outfit-draft-toolbar__label">Открыть</span>
+    <h3 class="outfit-draft-toolbar__title">{{ t('outfitDraft.title') }}</h3>
+    <div class="outfit-draft-toolbar__panel">
+      <label class="outfit-draft-toolbar__field">
+        <span class="outfit-draft-toolbar__label">{{ t('outfitDraft.existingOutfits') }}</span>
         <select v-model="selectedOutfitId" class="outfit-draft-toolbar__select">
-          <option value="">— выберите лук —</option>
+          <option :value="NEW_OUTFIT_VALUE">{{ t('outfitDraft.newOutfitOption') }}</option>
           <option v-for="entry in outfitsStore.outfits" :key="entry.id" :value="entry.id">
             {{ entry.name }}
           </option>
         </select>
       </label>
 
-      <button type="button" class="outfit-draft-toolbar__btn" :disabled="!isLoadPossible" @click="loadSelectedOutfit">
-        Открыть на холсте
-      </button>
+      <label class="outfit-draft-toolbar__field">
+        <span class="outfit-draft-toolbar__label">{{ t('outfitDraft.name') }}</span>
+        <input
+          v-model="outfitName"
+          class="outfit-draft-toolbar__input"
+          type="text"
+          :placeholder="t('outfitDraft.namePlaceholder')"
+          autocomplete="off"
+        />
+      </label>
 
-      <button
-        type="button"
-        class="outfit-draft-toolbar__btn outfit-draft-toolbar__btn_danger"
-        :disabled="!isLoadPossible"
-        @click="deleteSelectedOutfit"
-      >
-        Удалить
-      </button>
+      <label class="outfit-draft-toolbar__field">
+        <span class="outfit-draft-toolbar__label">{{ t('outfitDraft.temperature') }}</span>
+        <TemperatureRangeSlider v-model="temperatureRange" />
+      </label>
+
+      <div class="outfit-draft-toolbar__actions">
+        <button type="button" class="outfit-draft-toolbar__btn" @click="selectNewOutfit">
+          {{ t('outfitDraft.newOutfit') }}
+        </button>
+        <button type="button" class="outfit-draft-toolbar__btn outfit-draft-toolbar__btn_primary" @click="saveOutfit">
+          {{ t('common.save') }}
+        </button>
+      </div>
     </div>
 
     <p v-if="statusText" class="outfit-draft-toolbar__status">{{ statusText }}</p>
@@ -63,9 +43,12 @@
 </template>
 
 <script setup lang="ts">
-import { parseTagsFromString } from '~/utils/wardrobe-ui'
+import { cloneCanvasPlacements, normalizeCanvasPlacements } from '~/utils/canvas-placements'
+import TemperatureRangeSlider from '~/components/shared/TemperatureRangeSlider.vue'
 
-import { normalizeCanvasPlacements } from '~/utils/canvas-placements'
+const props = defineProps<{
+  capturePreview: () => string | null
+}>()
 
 const emit = defineEmits<{
   'loaded:outfit': []
@@ -73,164 +56,173 @@ const emit = defineEmits<{
 
 const outfitsStore = useOutfitsStore()
 const canvasDraftStore = useCanvasDraftStore()
+const { t } = useAppI18n()
+
+const NEW_OUTFIT_VALUE = '__new__'
+const DEFAULT_TEMPERATURE_RANGE = { min: 0, max: 15 }
 
 const outfitName = ref('')
-const outfitTagsText = ref('')
-const selectedOutfitId = ref('')
+const selectedOutfitId = ref(NEW_OUTFIT_VALUE)
 const statusText = ref('')
-
-const isLoadPossible = computed(() => selectedOutfitId.value.length > 0)
-
-const isUpdatePossible = computed(() => selectedOutfitId.value.length > 0)
+const temperatureRange = ref({ ...DEFAULT_TEMPERATURE_RANGE })
 
 watch(selectedOutfitId, (nextId) => {
-  if (!nextId.length) {
+  if (!nextId.length || nextId === NEW_OUTFIT_VALUE) {
+    canvasDraftStore.clearPlacements()
+    outfitName.value = ''
+    temperatureRange.value = { ...DEFAULT_TEMPERATURE_RANGE }
+    statusText.value = t('outfitDraft.statusNew')
     return
   }
 
-  const outfit = outfitsStore.outfitById(nextId)
+  const outfit = outfitsStore.outfits.find((entry) => entry.id === nextId) ?? null
   if (!outfit) {
     return
   }
 
   outfitName.value = outfit.name
-  outfitTagsText.value = outfit.tags.join(', ')
+  temperatureRange.value = {
+    min: outfit.minTemperatureC,
+    max: outfit.maxTemperatureC,
+  }
+  loadSelectedOutfit()
 })
 
 function saveOutfit() {
   const name = outfitName.value.trim()
   if (!name.length) {
-    statusText.value = 'Введите название лука.'
+    statusText.value = t('outfitDraft.errorNameRequired')
     return
   }
 
-  const tags = parseTagsFromString(outfitTagsText.value)
-  const placements = normalizeCanvasPlacements(canvasDraftStore.snapshotPlacements())
+  try {
+    const placements = normalizeCanvasPlacements(canvasDraftStore.snapshotPlacements())
+    let previewImageUrl: string | null = null
+    try {
+      previewImageUrl = props.capturePreview()
+    } catch {
+      previewImageUrl = null
+    }
 
-  outfitsStore.addOutfit({ name, placements, tags })
-  statusText.value = `Сохранено: «${name}».`
-}
-
-function updateSelectedOutfit() {
-  const id = selectedOutfitId.value
-  if (!id.length) {
-    return
+    const created = (
+      outfitsStore as unknown as {
+        addOutfit: (input: {
+          name: string
+          placements: typeof placements
+          previewImageUrl: string | null
+          minTemperatureC: number
+          maxTemperatureC: number
+        }) => { id: string }
+      }
+    ).addOutfit({
+      name,
+      placements,
+      previewImageUrl,
+      minTemperatureC: temperatureRange.value.min,
+      maxTemperatureC: temperatureRange.value.max,
+    })
+    selectedOutfitId.value = created.id
+    statusText.value = t('outfitDraft.statusSaved', { name })
+  } catch (error) {
+    statusText.value =
+      error instanceof Error ? error.message : t('outfitDraft.errorSave')
   }
-
-  const name = outfitName.value.trim()
-  if (!name.length) {
-    statusText.value = 'Введите название лука.'
-    return
-  }
-
-  const tags = parseTagsFromString(outfitTagsText.value)
-  const placements = normalizeCanvasPlacements(canvasDraftStore.snapshotPlacements())
-
-  outfitsStore.updateOutfit(id, { name, placements, tags })
-  statusText.value = 'Лук обновлён.'
 }
 
 function loadSelectedOutfit() {
   const id = selectedOutfitId.value
-  if (!id.length) {
+  if (!id.length || id === NEW_OUTFIT_VALUE) {
+    canvasDraftStore.clearPlacements()
+    outfitName.value = ''
+    temperatureRange.value = { ...DEFAULT_TEMPERATURE_RANGE }
+    statusText.value = t('outfitDraft.statusNew')
+    emit('loaded:outfit')
     return
   }
 
-  const outfit = outfitsStore.outfitById(id)
+  const outfit = outfitsStore.outfits.find((entry) => entry.id === id) ?? null
   if (!outfit) {
-    statusText.value = 'Лук не найден.'
+    statusText.value = t('outfitDraft.statusNotFound')
     return
   }
 
-  const placements = normalizeCanvasPlacements(structuredClone(outfit.placements))
+  const placements = normalizeCanvasPlacements(cloneCanvasPlacements(outfit.placements))
   canvasDraftStore.replacePlacements(placements)
   outfitName.value = outfit.name
-  outfitTagsText.value = outfit.tags.join(', ')
-  statusText.value = `Открыт лук «${outfit.name}».`
+  temperatureRange.value = {
+    min: outfit.minTemperatureC,
+    max: outfit.maxTemperatureC,
+  }
+  statusText.value = t('outfitDraft.statusOpened', { name: outfit.name })
   emit('loaded:outfit')
 }
 
-function deleteSelectedOutfit() {
-  const id = selectedOutfitId.value
-  if (!id.length) {
-    return
-  }
-
-  const outfit = outfitsStore.outfitById(id)
-  const isConfirmed = window.confirm(
-    outfit ? `Удалить лук «${outfit.name}»?` : 'Удалить выбранный лук?',
-  )
-
-  if (!isConfirmed) {
-    return
-  }
-
-  outfitsStore.removeOutfit(id)
-  selectedOutfitId.value = ''
-  outfitName.value = ''
-  outfitTagsText.value = ''
-  statusText.value = 'Лук удалён.'
+function selectNewOutfit() {
+  selectedOutfitId.value = NEW_OUTFIT_VALUE
 }
 </script>
 
 <style scoped lang="scss">
 .outfit-draft-toolbar {
-  padding: 0.75rem;
-  border: 1px solid #e3e3e3;
-  border-radius: 8px;
+  padding: 0.7rem;
+  border: 1px solid #e6e6e3;
+  border-radius: 12px;
   background: #fff;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.6rem;
 }
 
 .outfit-draft-toolbar__title {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  color: #575756;
+  font-weight: 600;
+}
+
+.outfit-draft-toolbar__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
 }
 
 .outfit-draft-toolbar__field {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-}
-
-.outfit-draft-toolbar__field_grow {
-  flex: 1 1 10rem;
-  min-width: 0;
+  gap: 0.3rem;
 }
 
 .outfit-draft-toolbar__label {
-  font-size: 0.75rem;
-  color: #444;
+  font-size: 0.78rem;
+  color: #575756;
+  font-weight: 600;
 }
 
 .outfit-draft-toolbar__input,
 .outfit-draft-toolbar__select {
-  padding: 0.45rem 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  padding: 0.5rem 0.62rem;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
   font: inherit;
+  font-size: 0.82rem;
 }
 
-.outfit-draft-toolbar__row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: flex-end;
-}
-
-.outfit-draft-toolbar__row_load {
-  align-items: flex-end;
+.outfit-draft-toolbar__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
 }
 
 .outfit-draft-toolbar__btn {
-  padding: 0.45rem 0.65rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
+  padding: 0.52rem 0.7rem;
+  border: 1px solid var(--ui-accent);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-accent);
   font: inherit;
+  font-size: 0.82rem;
   cursor: pointer;
+  color: #fff;
 
   &:disabled {
     opacity: 0.55;
@@ -238,32 +230,21 @@ function deleteSelectedOutfit() {
   }
 
   &:hover:not(:disabled) {
-    background: #f6f6f6;
+    border-color: var(--ui-border-strong);
+    background: #f0f0ee;
+    color: var(--ui-text);
   }
 }
 
 .outfit-draft-toolbar__btn_primary {
-  background: #1a1a1a;
+  background: var(--ui-accent);
   color: #fff;
-  border-color: #1a1a1a;
-
-  &:hover:not(:disabled) {
-    background: #333;
-  }
-}
-
-.outfit-draft-toolbar__btn_danger {
-  border-color: #e0a4a4;
-  color: #8b2b2b;
-
-  &:hover:not(:disabled) {
-    background: #fdecec;
-  }
+  border-color: var(--ui-accent);
 }
 
 .outfit-draft-toolbar__status {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: #444;
 }
 </style>

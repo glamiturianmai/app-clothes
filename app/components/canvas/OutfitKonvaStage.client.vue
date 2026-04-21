@@ -22,6 +22,7 @@ const imageCache = useKonvaImageCache()
 
 let stage: Konva.Stage | null = null
 let layer: Konva.Layer | null = null
+let bgRect: Konva.Rect | null = null
 let transformer: Konva.Transformer | null = null
 let resizeObserver: ResizeObserver | null = null
 let syncToken = 0
@@ -33,7 +34,7 @@ const sortedPlacements = computed(() =>
 )
 
 function getMinStageSizePx() {
-  return 320
+  return 180
 }
 
 function updateStageSize() {
@@ -43,14 +44,28 @@ function updateStageSize() {
     return
   }
 
-  const measuredWidth = Math.floor(el!.getBoundingClientRect().width)
+  const rect = el!.getBoundingClientRect()
+  const measuredWidth = Math.floor(rect.width)
+  const viewportHeight = window.innerHeight || 0
+  const verticalPadding = 28
+  const measuredMaxHeight = Math.floor(viewportHeight - rect.top - verticalPadding)
   const widthCandidate = Number.isFinite(measuredWidth) && measuredWidth > 0 ? measuredWidth : 0
-  const width = Math.max(widthCandidate, getMinStageSizePx())
+  const heightCap = Number.isFinite(measuredMaxHeight) && measuredMaxHeight > 0
+    ? measuredMaxHeight
+    : widthCandidate
+  const width = Math.max(
+    Math.min(widthCandidate, heightCap),
+    getMinStageSizePx(),
+  )
   const height = width
 
   stage!.width(width)
   stage!.height(height)
   canvasDraftStore.setCanvasSize(width, height)
+  if (bgRect) {
+    bgRect.width(width)
+    bgRect.height(height)
+  }
   layer?.batchDraw()
 }
 
@@ -132,7 +147,6 @@ function applyPlacementToNode(placement: CanvasPlacement, node: Konva.Image, htm
 }
 
 async function syncFromStore() {
-  console.log(11111);
   const token = ++syncToken
   const isLayerReady = Boolean(layer) && Boolean(stage)
   if (!isLayerReady) {
@@ -149,29 +163,36 @@ async function syncFromStore() {
     }
   }
 
-  for (const placement of sortedPlacements.value) {
+  for (const [index, placement] of sortedPlacements.value.entries()) {
     if (token !== syncToken) {
       return
     }
 
-    const item = wardrobeStore.itemById(placement.wardrobeItemId)
-    console.log('item', item);
+    const item = wardrobeStore.items.find((entry) => entry.id === placement.wardrobeItemId) ?? null
     const imageUrl = item?.imageUrl ?? ''
     const isImageUrlPresent = Boolean(imageUrl)
 
-    console.log('placements:', placements.value)
-    console.log('wardrobe item:', item)
-    console.log('imageUrl:', imageUrl)
     if (!isImageUrlPresent) {
       continue
     }
 
-    let htmlImage: HTMLImageElement
+    let htmlImage: HTMLImageElement | undefined
 
     try {
-      htmlImage = await imageCache.ensureWardrobeItemImage(placement.wardrobeItemId, imageUrl)
+      const ensuredImage = await imageCache.ensureWardrobeItemImage(
+        placement.wardrobeItemId,
+        imageUrl,
+      )
+      if (!ensuredImage) {
+        continue
+      }
+      htmlImage = ensuredImage
     } catch (e) {
       console.error('IMAGE LOAD ERROR', placement, e)
+      continue
+    }
+
+    if (!htmlImage) {
       continue
     }
 
@@ -186,15 +207,17 @@ async function syncFromStore() {
     let node = konvaImageByPlacementId.get(placement.id) ?? null
 
     if (!node) {
-      node = new Konva.Image({ draggable: true })
+      node = new Konva.Image({ image: htmlImage, draggable: true })
       layer.add(node)
       konvaImageByPlacementId.set(placement.id, node)
       bindImageNode(placement, node)
     }
 
     applyPlacementToNode(placement, node, htmlImage)
+    node.zIndex(index + 1)
   }
 
+  bgRect?.moveToBottom()
   transformer?.moveToTop()
   attachTransformer()
   layer?.batchDraw()
@@ -214,6 +237,17 @@ function initKonva() {
 
   layer = new Konva.Layer()
   stage.add(layer)
+
+  const initialSize = getMinStageSizePx()
+  bgRect = new Konva.Rect({
+    x: 0,
+    y: 0,
+    width: initialSize,
+    height: initialSize,
+    fill: '#ffffff',
+    listening: false,
+  })
+  layer.add(bgRect)
 
   transformer = new Konva.Transformer({
     rotateEnabled: true,
@@ -263,6 +297,7 @@ onBeforeUnmount(() => {
   stage?.destroy()
   stage = null
   layer = null
+  bgRect = null
   transformer = null
 })
 
@@ -277,24 +312,57 @@ watch(
 watch(selectedPlacementId, () => {
   attachTransformer()
 })
+
+function capturePreviewDataUrl() {
+  if (!stage) {
+    return null
+  }
+  if (!placements.value.length) {
+    return null
+  }
+  try {
+    return stage.toDataURL({
+      mimeType: 'image/webp',
+      pixelRatio: 0.22,
+      quality: 0.62,
+    })
+  } catch {
+    try {
+      return stage.toDataURL({
+        mimeType: 'image/jpeg',
+        pixelRatio: 0.22,
+        quality: 0.62,
+      })
+    } catch {
+      try {
+        return stage.toDataURL({ pixelRatio: 0.22 })
+      } catch {
+        return null
+      }
+    }
+  }
+}
+
+defineExpose({
+  capturePreviewDataUrl,
+})
 </script>
 
 <style scoped lang="scss">
 .outfit-konva-stage {
   width: 100%;
-  min-height: 200px;
-  background:
-    radial-gradient(circle at 1px 1px, #ddd 1px, transparent 0);
-  background-size: 16px 16px;
-  background-color: #f7f7f7;
-  border-radius: 6px;
+  min-height: 220px;
+  aspect-ratio: 1 / 1;
+  background-color: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #dcdcd9;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 4px 12px rgba(15, 23, 42, 0.07);
   overflow: hidden;
 }
 
 .outfit-konva-stage :deep(canvas) {
   display: block;
-  max-width: 100%;
-  height: auto;
-  vertical-align: top;
 }
 </style>

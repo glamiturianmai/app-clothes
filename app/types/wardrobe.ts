@@ -10,7 +10,6 @@ type WardrobeSeason = 'autumn' | 'all' | 'spring' | 'summer' | 'winter'
 type WardrobeItem = {
   baseLayer: number
   category: WardrobeCategory
-  color: string
   createdAt: number
   id: string
   imageUrl: string

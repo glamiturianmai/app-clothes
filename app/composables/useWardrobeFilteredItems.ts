@@ -1,20 +1,16 @@
-import type { WardrobeCategory, WardrobeItem, WardrobeSeason } from '~/types/wardrobe'
-
-type WardrobeFilterCategory = WardrobeCategory | 'all'
+import type { WardrobeItem, WardrobeSeason } from '~/types/wardrobe'
 
 type WardrobeFilterSeason = WardrobeSeason | 'all'
 
 type WardrobeListFilters = {
-  category: WardrobeFilterCategory
   season: WardrobeFilterSeason
-  tagQuery: string
+  matchTags: string[]
 }
 
 function createDefaultWardrobeListFilters(): WardrobeListFilters {
   return {
-    category: 'all',
     season: 'all',
-    tagQuery: '',
+    matchTags: [],
   }
 }
 
@@ -23,25 +19,18 @@ function useWardrobeFilteredItems(
   filters: Ref<WardrobeListFilters>,
 ) {
   const filteredItems = computed(() => {
-    const tagNeedle = filters.value.tagQuery.trim().toLowerCase()
+    const matchTags = filters.value.matchTags.filter((tag) => tag.trim().length > 0)
 
     return items.value.filter((item) => {
-      if (filters.value.category !== 'all' && item.category !== filters.value.category) {
-        return false
-      }
-
       if (filters.value.season !== 'all' && item.season !== filters.value.season) {
         return false
       }
 
-      if (!tagNeedle) {
+      if (!matchTags.length) {
         return true
       }
 
-      const isNameMatch = item.name.toLowerCase().includes(tagNeedle)
-      const isTagMatch = item.tags.some((tag) => tag.toLowerCase().includes(tagNeedle))
-
-      return isNameMatch || isTagMatch
+      return matchTags.some((tag) => item.tags.includes(tag))
     })
   })
 

@@ -1,7 +1,7 @@
 const STORAGE_SCHEMA_VERSION = 1
 
-const WARDROBE_PERSIST_KEY = 'outfit-canvas-wardrobe'
+const WARDROBE_PERSIST_KEY = `outfit-canvas-wardrobe-v${STORAGE_SCHEMA_VERSION}`
 
-const OUTFITS_PERSIST_KEY = 'outfit-canvas-outfits'
+const OUTFITS_PERSIST_KEY = `outfit-canvas-outfits-v${STORAGE_SCHEMA_VERSION}`
 
 export { OUTFITS_PERSIST_KEY, STORAGE_SCHEMA_VERSION, WARDROBE_PERSIST_KEY }

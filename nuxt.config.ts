@@ -14,4 +14,12 @@ export default defineNuxtConfig({
       include: ['konva'],
     },
   },
+  runtimeConfig: {
+    public: {
+      uploadcarePublicKey:
+        process.env.NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY ??
+        process.env.NUXT_PUBLIC_UPLOADCARE_PUBLIC_KEY ??
+        '',
+    },
+  },
 })

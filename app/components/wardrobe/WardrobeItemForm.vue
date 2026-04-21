@@ -1,66 +1,44 @@
 <template>
   <form class="wardrobe-form" @submit.prevent="submitForm">
-    <h3 class="wardrobe-form__heading">{{ headingText }}</h3>
+    <h3 v-if="showHeading" class="wardrobe-form__heading">{{ headingText }}</h3>
 
     <label class="wardrobe-form__field">
-      <span class="wardrobe-form__label">Название</span>
+      <span class="wardrobe-form__label">{{ t('wardrobe.form.name') }}</span>
       <input v-model="draft.name" class="wardrobe-form__input" type="text" required />
     </label>
 
-    <div class="wardrobe-form__row">
-      <label class="wardrobe-form__field">
-        <span class="wardrobe-form__label">Цвет</span>
-        <input v-model="draft.color" class="wardrobe-form__color" type="color" />
-      </label>
-      <label class="wardrobe-form__field">
-        <span class="wardrobe-form__label">Базовый слой</span>
-        <input
-          v-model.number="draft.baseLayer"
-          class="wardrobe-form__input"
-          type="number"
-          min="0"
-          step="1"
-        />
-      </label>
-    </div>
-
     <label class="wardrobe-form__field">
-      <span class="wardrobe-form__label">Категория</span>
+      <span class="wardrobe-form__label">{{ t('wardrobe.form.category') }}</span>
       <select v-model="draft.category" class="wardrobe-form__select">
         <option v-for="option in WARDROBE_CATEGORY_OPTIONS" :key="option.value" :value="option.value">
-          {{ option.label }}
+          {{ t(option.labelKey) }}
         </option>
       </select>
     </label>
 
     <label class="wardrobe-form__field">
-      <span class="wardrobe-form__label">Сезон</span>
+      <span class="wardrobe-form__label">{{ t('wardrobe.form.season') }}</span>
       <select v-model="draft.season" class="wardrobe-form__select">
         <option v-for="option in WARDROBE_SEASON_OPTIONS" :key="option.value" :value="option.value">
-          {{ option.label }}
+          {{ t(option.labelKey) }}
         </option>
       </select>
     </label>
 
     <label class="wardrobe-form__field">
-      <span class="wardrobe-form__label">Теги</span>
-      <input
-        v-model="tagsText"
-        class="wardrobe-form__input"
-        type="text"
-        placeholder="через запятую"
-        autocomplete="off"
+      <span class="wardrobe-form__label">{{ t('wardrobe.form.tags') }}</span>
+      <TagSelector
+        v-model="selectedTags"
+        :options="tagOptions"
+        :allow-custom="true"
+        :placeholder="t('wardrobe.form.tagsPlaceholder')"
+        @create:option="onCreateTag"
       />
     </label>
 
     <label class="wardrobe-form__field">
-      <span class="wardrobe-form__label">Изображение PNG</span>
-      <input
-        class="wardrobe-form__file"
-        type="file"
-        accept="image/png,.png"
-        @change="onFileChange"
-      />
+      <span class="wardrobe-form__label">{{ t('wardrobe.form.imagePng') }}</span>
+      <UploadcareUploader v-model="draft.imageUrl" />
     </label>
 
     <p v-if="imageError" class="wardrobe-form__error">{{ imageError }}</p>
@@ -70,8 +48,8 @@
     </div>
 
     <div class="wardrobe-form__actions">
-      <button type="submit" class="wardrobe-form__btn wardrobe-form__btn_primary">Сохранить</button>
-      <button type="button" class="wardrobe-form__btn" @click="$emit('cancel')">Отмена</button>
+      <button type="submit" class="wardrobe-form__btn wardrobe-form__btn_primary">{{ t('common.save') }}</button>
+      <button type="button" class="wardrobe-form__btn" @click="$emit('cancel')">{{ t('common.cancel') }}</button>
     </div>
   </form>
 </template>
@@ -79,28 +57,43 @@
 <script setup lang="ts">
 import type { WardrobeItem, WardrobeItemInput } from '~/types/wardrobe'
 
-import { readPngDataUrl } from '~/utils/read-png-data-url'
+import TagSelector from '~/components/shared/TagSelector.vue'
+import UploadcareUploader from '~/components/shared/UploadcareUploader.client.vue'
 import {
   createEmptyWardrobeItemInput,
-  parseTagsFromString,
   WARDROBE_CATEGORY_OPTIONS,
   WARDROBE_SEASON_OPTIONS,
 } from '~/utils/wardrobe-ui'
 
-const props = defineProps<{
-  item: WardrobeItem | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    item: WardrobeItem | null
+    showHeading?: boolean
+  }>(),
+  { showHeading: true },
+)
 
 const emit = defineEmits<{
   cancel: []
   save: [input: WardrobeItemInput]
 }>()
 
+const wardrobeStore = useWardrobeStore()
+const { t } = useAppI18n()
+const wardrobeStoreApi = wardrobeStore as unknown as {
+  availableTags: string[]
+  registerTags: (tags: string[]) => void
+}
+
 const draft = reactive<WardrobeItemInput>(createEmptyWardrobeItemInput())
-const tagsText = ref('')
+const selectedTags = ref<string[]>([])
 const imageError = ref('')
 
-const headingText = computed(() => (props.item ? 'Редактировать вещь' : 'Новая вещь'))
+const headingText = computed(() =>
+  props.item ? t('wardrobe.form.headingEdit') : t('wardrobe.form.headingNew'),
+)
+
+const tagOptions = computed(() => wardrobeStoreApi.availableTags)
 
 watch(
   () => props.item,
@@ -109,40 +102,35 @@ watch(
     if (next) {
       draft.baseLayer = next.baseLayer
       draft.category = next.category
-      draft.color = next.color
       draft.imageUrl = next.imageUrl
       draft.name = next.name
       draft.season = next.season
       draft.tags = [...next.tags]
-      tagsText.value = next.tags.join(', ')
+      selectedTags.value = [...next.tags]
     } else {
       Object.assign(draft, createEmptyWardrobeItemInput())
-      tagsText.value = ''
+      selectedTags.value = []
     }
   },
   { immediate: true },
 )
 
-async function onFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0] ?? null
-  target.value = ''
+watch(
+  () => draft.imageUrl,
+  (nextImageUrl) => {
+    if (nextImageUrl.trim().length > 0) {
+      imageError.value = ''
+    }
+  },
+)
 
-  if (!file) {
-    return
-  }
-
-  try {
-    draft.imageUrl = await readPngDataUrl(file)
-    imageError.value = ''
-  } catch (error) {
-    imageError.value = error instanceof Error ? error.message : 'Не удалось загрузить PNG.'
-  }
+function onCreateTag(tag: string) {
+  wardrobeStoreApi.registerTags([tag])
 }
 
 function submitForm() {
   if (!draft.imageUrl.trim()) {
-    imageError.value = 'Добавьте PNG с прозрачным фоном.'
+    imageError.value = t('wardrobe.form.imageRequired')
     return
   }
 
@@ -152,14 +140,12 @@ function submitForm() {
     return
   }
 
-  const tags = parseTagsFromString(tagsText.value)
-  const baseLayerRaw = Number(draft.baseLayer)
-  const baseLayer = Number.isFinite(baseLayerRaw) ? Math.max(0, Math.floor(baseLayerRaw)) : 0
+  const tags = [...selectedTags.value]
+  const baseLayer = props.item?.baseLayer ?? 0
 
   emit('save', {
     baseLayer,
     category: draft.category,
-    color: draft.color,
     imageUrl: draft.imageUrl,
     name,
     season: draft.season,
@@ -171,9 +157,9 @@ function submitForm() {
 <style scoped lang="scss">
 .wardrobe-form {
   padding: 1rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fafafa;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-muted);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -204,23 +190,10 @@ function submitForm() {
 .wardrobe-form__input,
 .wardrobe-form__select {
   padding: 0.45rem 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
   font: inherit;
-}
-
-.wardrobe-form__color {
-  width: 3rem;
-  height: 2rem;
-  padding: 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.wardrobe-form__file {
-  font: inherit;
-  font-size: 0.85rem;
 }
 
 .wardrobe-form__error {
@@ -251,24 +224,23 @@ function submitForm() {
 
 .wardrobe-form__btn {
   padding: 0.45rem 0.85rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid var(--ui-accent);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-accent);
   font: inherit;
   cursor: pointer;
+  color: #fff;
 
   &:hover {
-    background: #f3f3f3;
+    background: #f0f0ee;
+    border-color: var(--ui-border-strong);
+    color: var(--ui-text);
   }
 }
 
 .wardrobe-form__btn_primary {
-  background: #1a1a1a;
+  background: var(--ui-accent);
   color: #fff;
-  border-color: #1a1a1a;
-
-  &:hover {
-    background: #333;
-  }
+  border-color: var(--ui-accent);
 }
 </style>

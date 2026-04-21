@@ -6,10 +6,19 @@ import type {
   CanvasPlacementPatch,
 } from '~/types/canvas'
 
+import { cloneCanvasPlacements } from '~/utils/canvas-placements'
 import { createId } from '~/utils/id'
 
 const DEFAULT_CANVAS_WIDTH = 500
 const DEFAULT_CANVAS_HEIGHT = 500
+
+function normalizePlacementOrder(placements: CanvasPlacement[]) {
+  const sorted = [...placements].sort((a, b) => a.zIndex - b.zIndex)
+  sorted.forEach((placement, index) => {
+    placement.zIndex = index + 1
+  })
+  return sorted
+}
 
 const useCanvasDraftStore = defineStore('canvasDraft', {
   state: () => ({
@@ -73,11 +82,14 @@ const useCanvasDraftStore = defineStore('canvasDraft', {
       this.lastAddedPlacementId = null
     },
     replacePlacements(nextPlacements: CanvasPlacement[]) {
-      this.placements.splice(0, this.placements.length, ...nextPlacements)
+      const normalized = [...nextPlacements]
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map((placement, index) => ({ ...placement, zIndex: index + 1 }))
+      this.placements.splice(0, this.placements.length, ...normalized)
       this.lastAddedPlacementId = null
     },
     snapshotPlacements(): CanvasPlacement[] {
-      return structuredClone(this.placements)
+      return cloneCanvasPlacements(this.placements)
     },
     setCanvasSize(width: number, height: number) {
       const isWidthValid = Number.isFinite(width) && width > 0
@@ -90,42 +102,74 @@ const useCanvasDraftStore = defineStore('canvasDraft', {
       this.canvasHeight = height
       return true
     },
+    movePlacementForward(id: string) {
+      const sorted = normalizePlacementOrder(this.placements)
+      const currentIndex = sorted.findIndex((placement) => placement.id === id)
+      if (currentIndex === -1 || currentIndex >= sorted.length - 1) {
+        return false
+      }
+
+      const current = sorted[currentIndex]
+      const next = sorted[currentIndex + 1]
+      if (!current || !next) {
+        return false
+      }
+
+      ;[current.zIndex, next.zIndex] = [next.zIndex, current.zIndex]
+      normalizePlacementOrder(this.placements)
+      return true
+    },
+    movePlacementBackward(id: string) {
+      const sorted = normalizePlacementOrder(this.placements)
+      const currentIndex = sorted.findIndex((placement) => placement.id === id)
+      if (currentIndex <= 0) {
+        return false
+      }
+
+      const current = sorted[currentIndex]
+      const prev = sorted[currentIndex - 1]
+      if (!current || !prev) {
+        return false
+      }
+
+      ;[current.zIndex, prev.zIndex] = [prev.zIndex, current.zIndex]
+      normalizePlacementOrder(this.placements)
+      return true
+    },
     bringPlacementToFront(id: string) {
-      const isPlacementExist = this.placements.some((placement) => placement.id === id)
-      if (!isPlacementExist) {
+      const sorted = normalizePlacementOrder(this.placements)
+      const currentIndex = sorted.findIndex((placement) => placement.id === id)
+      if (currentIndex === -1 || currentIndex === sorted.length - 1) {
         return false
       }
 
-      const currentZIndexes = this.placements.map((placement) => placement.zIndex)
-      const currentMaxZIndex = currentZIndexes.length
-        ? Math.max(...currentZIndexes)
-        : 0
-
-      const placement = this.placements.find((entry) => entry.id === id)
-      if (!placement) {
+      const [current] = sorted.splice(currentIndex, 1)
+      if (!current) {
         return false
       }
 
-      placement.zIndex = currentMaxZIndex + 1
+      sorted.push(current)
+      sorted.forEach((placement, index) => {
+        placement.zIndex = index + 1
+      })
       return true
     },
     sendPlacementToBack(id: string) {
-      const isPlacementExist = this.placements.some((placement) => placement.id === id)
-      if (!isPlacementExist) {
+      const sorted = normalizePlacementOrder(this.placements)
+      const currentIndex = sorted.findIndex((placement) => placement.id === id)
+      if (currentIndex <= 0) {
         return false
       }
 
-      const currentZIndexes = this.placements.map((placement) => placement.zIndex)
-      const currentMinZIndex = currentZIndexes.length
-        ? Math.min(...currentZIndexes)
-        : 0
-
-      const placement = this.placements.find((entry) => entry.id === id)
-      if (!placement) {
+      const [current] = sorted.splice(currentIndex, 1)
+      if (!current) {
         return false
       }
 
-      placement.zIndex = currentMinZIndex - 1
+      sorted.unshift(current)
+      sorted.forEach((placement, index) => {
+        placement.zIndex = index + 1
+      })
       return true
     },
   },

@@ -1,4 +1,5 @@
 import { shallowRef } from 'vue'
+import { translate } from '~/locales/messages'
 
 type ImageByWardrobeItemId = Record<string, HTMLImageElement | null>
 
@@ -10,13 +11,14 @@ function useKonvaImageCache() {
     return new Promise<HTMLImageElement>((resolve, reject) => {
       const isImageUrlDefined = Boolean(imageUrl)
       if (!isImageUrlDefined) {
-        reject(new Error('Пустой imageUrl'))
+        reject(new Error(translate('ru', 'imageCache.emptyUrl')))
         return
       }
 
       const image = new Image()
+      image.crossOrigin = 'anonymous'
       image.onload = () => resolve(image)
-      image.onerror = () => reject(new Error('Не удалось загрузить изображение'))
+      image.onerror = () => reject(new Error(translate('ru', 'imageCache.loadError')))
       image.src = imageUrl
     })
   }

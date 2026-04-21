@@ -1,30 +1,22 @@
 <template>
   <main class="home">
-    <header class="home__header">
-      <h1 class="home__title">Outfit Canvas</h1>
-      <nav class="home__nav">
-        <NuxtLink class="home__link" to="/">Главная</NuxtLink>
-        <NuxtLink class="home__link" to="/outfits">Луки</NuxtLink>
-      </nav>
-    </header>
-
     <div class="home__layout">
       <div class="home__col home__col_wardrobe">
         <WardrobeBoard />
       </div>
       <aside class="home__col home__col_canvas">
-        <h2 class="home__aside-title">Конструктор</h2>
+        <h2 class="home__aside-title">{{ t('home.constructor') }}</h2>
         <OutfitCanvas />
-        <p class="home__meta">Сохранённых луков: {{ outfitsCount }}</p>
       </aside>
     </div>
   </main>
 </template>
 
 <script setup lang="ts">
-import { normalizeCanvasPlacements } from '~/utils/canvas-placements'
+import { cloneCanvasPlacements, normalizeCanvasPlacements } from '~/utils/canvas-placements'
 import OutfitCanvas from '../components/canvas/OutfitCanvas.vue'
 const route = useRoute()
+const { t } = useAppI18n()
 
 const outfitsStore = useOutfitsStore()
 const canvasDraftStore = useCanvasDraftStore()
@@ -39,13 +31,13 @@ function applyOutfitQueryToCanvas() {
     return
   }
 
-  const outfit = outfitsStore.outfitById(id)
+  const outfit = outfitsStore.outfits.find((entry) => entry.id === id) ?? null
 
   if (!outfit) {
     return
   }
 
-  const placements = normalizeCanvasPlacements(structuredClone(outfit.placements))
+  const placements = normalizeCanvasPlacements(cloneCanvasPlacements(outfit.placements))
   canvasDraftStore.replacePlacements(placements)
 }
 
@@ -60,60 +52,65 @@ watch(
 
 <style scoped lang="scss">
 .home {
-  min-height: 100vh;
-  padding: 1rem 1.25rem 2rem;
+  min-height: calc(100vh - 4.25rem);
+  padding: 0.9rem 1.25rem 1.35rem;
 }
 
 .home__header {
-  align-items: baseline;
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
+  gap: 0.6rem;
+  justify-content: flex-start;
+  margin-bottom: 0.9rem;
 }
 
 .home__title {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   margin: 0;
-}
-
-.home__nav {
-  display: flex;
-  gap: 1rem;
-}
-
-.home__link {
-  color: inherit;
+  color: #191919;
 }
 
 .home__layout {
   display: grid;
-  gap: 1.5rem;
+  gap: 1rem;
   grid-template-columns: 1fr;
 }
 
 @media (min-width: 900px) {
   .home__layout {
-    grid-template-columns: 3fr 7fr;
+    grid-template-columns: minmax(240px, 25vw) minmax(0, 1fr);
     align-items: start;
+    justify-content: stretch;
   }
 }
 
 .home__col_wardrobe {
   min-width: 0;
+  max-height: calc(100vh - 6.4rem);
+  overflow: auto;
+  padding-right: 0.3rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.home__col_wardrobe::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .home__col_canvas {
-  padding: 1rem;
-  border: 1px dashed #ccc;
-  border-radius: 8px;
-  background: #fafafa;
+  padding: 0.85rem;
+  border: 1px solid #ececea;
+  border-radius: 12px;
+  background: #fcfcfb;
+  min-width: 0;
 }
 
 .home__aside-title {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
 }
 
 .home__aside-text {
@@ -124,7 +121,7 @@ watch(
 
 .home__meta {
   margin: 0;
-  font-size: 0.85rem;
-  color: #555;
+  font-size: 0.8rem;
+  color: #666;
 }
 </style>
